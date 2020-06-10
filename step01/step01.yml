@@ -1,0 +1,49 @@
+# Step01
+# Create an EC2 instance in the default VPC
+# Using a UserData script, provision with an HTTPD server
+# Create a SG with ingress rules
+# NB: In order to create a SG with egress rules we will need to ref a VPC
+# Using UserData, install Apache and create a simple webpage
+# Finally, export the security group so that it can be used in another template
+
+Resources: 
+  InstanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow http to client host
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 80
+        ToPort: 80
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: tcp
+        FromPort: 22
+        ToPort: 22
+        CidrIp: 0.0.0.0/0
+  Ec2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t2.micro
+      ImageId: ami-0323c3dd2da7fb37d
+      KeyName: MyEC2KeyPair
+      SecurityGroupIds:
+        - !Ref InstanceSecurityGroup
+      UserData:           # To see log of output: /var/log/cloud-init-output.log
+        Fn::Base64:                   
+          !Sub |
+              #!/bin/bash -ex
+              sudo yum install -y httpd;
+              sudo echo "<html><h1>Hello CloudFormation!!<h1></html>" > /var/www/html/index.html;
+              cd /var/www/html;
+              sudo chmod 755 index.html;
+              sudo service httpd start;
+              sudo chkconfig httpd on;
+      Tags:                                     
+        - Key: Name
+          Value: Step01  
+Outputs:
+  InstanceSecurityGroup:
+    Description: The Security Group for the Instance
+    Value: !Ref InstanceSecurityGroup
+    Export:
+      Name: InstanceSecurityGroup
