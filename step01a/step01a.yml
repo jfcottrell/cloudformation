@@ -1,17 +1,38 @@
 # Step01a
-# Simple example to import as security 
-#  group created in another template
-# Step01a
-# Import security group from another stack
-Resources:
+# Simple example to import as security group created in another 
+# template and demonstrate the use of the cfn-init function
+
+Resources: 
   Ec2Instance:
     Type: AWS::EC2::Instance
+    Metadata: 
+      AWS::CloudFormation::Init: 
+        config: 
+          packages: 
+            yum:
+              httpd: []
+          files:
+            /var/www/html/index.html:
+              content: !Sub |
+                <html><h1>Hello CloudFormation!!<h1></html>
+          services: 
+            sysvinit:
+              httpd:
+                enabled: true
+                ensureRunning: true
     Properties:
       InstanceType: t2.micro
       ImageId: ami-0323c3dd2da7fb37d
       KeyName: MyEC2KeyPair
       SecurityGroupIds:
-        - !ImportValue InstanceSecurityGroup
+      - !ImportValue InstanceSecurityGroup
+      UserData:
+        Fn::Base64:                                
+          !Sub |
+            #!/bin/bash -xe
+            yum update -y aws-cfn-bootstrap
+            # start cfn-init
+            /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource Ec2Instance --region ${AWS::Region}
       Tags:                                     
-        - Key: Name
-          Value: Step01a
+      - Key: Name
+        Value: Step01a
