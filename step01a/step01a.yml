@@ -1,0 +1,17 @@
+# Step01a
+# Simple example to import as security 
+#  group created in another template
+# Step01a
+# Import security group from another stack
+Resources:
+  Ec2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t2.micro
+      ImageId: ami-0323c3dd2da7fb37d
+      KeyName: MyEC2KeyPair
+      SecurityGroupIds:
+        - !ImportValue InstanceSecurityGroup
+      Tags:                                     
+        - Key: Name
+          Value: Step01a
