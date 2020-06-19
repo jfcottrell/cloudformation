@@ -1,5 +1,5 @@
-# Step03
-# Add a custom VPC
+# Step04
+# Add an Application Load Balancer
 # Add all networking components for a public subnet
 # Create an EC2 instance in the custom VPC
 
@@ -15,7 +15,7 @@ Resources:
           Value:  !Join ['', [!Ref "AWS::StackName", "-VPC" ]]
 
   # Define Subnets
-  PublicSubnet:
+  PublicSubnetA:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref VPC
@@ -24,15 +24,34 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub ${AWS::StackName}-Public-A
-  PrivateSubnet:
+  PublicSubnetB:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref VPC
       CidrBlock: 10.0.1.0/24
+      AvailabilityZone: !Select [ 1, !GetAZs ]
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-Public-B
+  PrivateSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.2.0/24
       AvailabilityZone: !Select [ 0, !GetAZs ]
       Tags:
         - Key: Name
           Value: !Sub ${AWS::StackName}-Private-A  
+  PrivateSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.3.0/24
+      AvailabilityZone: !Select [ 1, !GetAZs ]
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-Private-B    
+
   
   # Create IGW and attach gateway
   InternetGateway:
@@ -59,10 +78,15 @@ Resources:
       RouteTableId: !Ref PublicRouteTable
       DestinationCidrBlock: 0.0.0.0/0
       GatewayId: !Ref InternetGateway
-  PublicSubnetRouteTableAssociation:
+  PublicSubnetARouteTableAssociation:
     Type: 'AWS::EC2::SubnetRouteTableAssociation'
     Properties:
-      SubnetId: !Ref PublicSubnet
+      SubnetId: !Ref PublicSubnetA
+      RouteTableId: !Ref PublicRouteTable
+  PublicSubnetBRouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref PublicSubnetB
       RouteTableId: !Ref PublicRouteTable
   
   # PRIVATE Route Table
@@ -80,21 +104,27 @@ Resources:
       DestinationCidrBlock: 0.0.0.0/0
       # Route traffic through the NAT Gateway:
       NatGatewayId: !Ref NATGateway
-  PurivateSubnetRouteTableAssociation:
-      Type: 'AWS::EC2::SubnetRouteTableAssociation'
-      Properties:
-        SubnetId: !Ref PrivateSubnet
-        RouteTableId: !Ref PrivateRouteTable
+  PrivateSubnetRouteTableAssociationA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnetA
+      RouteTableId: !Ref PrivateRouteTable
+  PrivateSubnetRouteTableAssociationB:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnetB
+      RouteTableId: !Ref PrivateRouteTable
 
 # NAT Gateway:
   NATGateway:
     Type: AWS::EC2::NatGateway
     Properties:
       AllocationId: !GetAtt ElasticIPAddress.AllocationId
-      SubnetId: !Ref PublicSubnet
+      SubnetId: !Ref PublicSubnetA
       Tags:
       - Key: Name
         Value: !Sub NAT-${AWS::StackName}
+      
   ElasticIPAddress:
     Type: AWS::EC2::EIP
     Properties:
@@ -128,7 +158,46 @@ Resources:
         ToPort: 22
         CidrIp: 0.0.0.0/0
 
-  Ec2InstancePublic:
+  MyApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    DependsOn: 
+      - Ec2InstanceA
+      - Ec2InstanceB
+    Properties:
+      IpAddressType: ipv4
+      Scheme: internet-facing
+      SecurityGroups:
+        - !Ref InstanceSecurityGroup
+      Subnets:
+        - !Ref PublicSubnetA
+        - !Ref PublicSubnetB
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-ALB
+      Type: application
+  listener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref MyTargetGroup
+      LoadBalancerArn: !Ref MyApplicationLoadBalancer
+      Port: '80'
+      Protocol: HTTP
+
+  MyTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties: 
+      HealthCheckEnabled: true
+      Port: 80
+      Protocol: HTTP
+      VpcId: !Ref VPC
+      Targets: 
+        - Id: !Ref Ec2InstanceA
+        - Id: !Ref Ec2InstanceB
+      TargetType: instance
+  
+  Ec2InstanceA:
     Type: AWS::EC2::Instance
     Properties:
       InstanceType: t2.micro
@@ -140,35 +209,45 @@ Resources:
           GroupSet:
             - Ref: InstanceSecurityGroup
           SubnetId:
-            Ref: PublicSubnet
+            Ref: PrivateSubnetA
       UserData:
-        Fn::Base64:                               
+        Fn::Base64:                                # YAML makes userdata much cleaner
           !Sub |
               #!/bin/bash -ex
               sudo yum install -y httpd;
-              sudo echo "<html><h1>Hello CloudFormation!!<h1></html>" > /var/www/html/index.html;
+              sudo echo "<html><h1>Hello CloudFormation A!!<h1></html>" > /var/www/html/index.html;
               cd /var/www/html;
               sudo chmod 755 index.html;
               sudo service httpd start;
               sudo chkconfig httpd on;
-      Tags:                                      
-        -                                        
+      Tags:                                      # Tags are an example of a sequence of mappings in YAML,
+        -                                       
           Key: Name
-          Value: CloudFormation Test - PUBLIC    
+          Value: CloudFormation Test Instance A  
 
-  Ec2InstancePrivate:
+  Ec2InstanceB:
     Type: AWS::EC2::Instance
     Properties:
       InstanceType: t2.micro
       ImageId: ami-0323c3dd2da7fb37d
       KeyName: MyEC2KeyPair
       NetworkInterfaces:
-        - AssociatePublicIpAddress: false
+        - AssociatePublicIpAddress: true
           DeviceIndex: 0
           GroupSet:
             - Ref: InstanceSecurityGroup
           SubnetId:
-            Ref: PrivateSubnet
-      Tags:                                     
+            Ref: PrivateSubnetB
+      UserData:
+        Fn::Base64:                               
+          !Sub |
+              #!/bin/bash -ex
+              sudo yum install -y httpd;
+              sudo echo "<html><h1>Hello CloudFormation B!!<h1></html>" > /var/www/html/index.html;
+              cd /var/www/html;
+              sudo chmod 755 index.html;
+              sudo service httpd start;
+              sudo chkconfig httpd on;
+      Tags:                                      # Tags are an example of a sequence of mappings in YAML,
         - Key: Name
-          Value: CloudFormation Test - PRIVATE
+          Value: CloudFormation Test Instance B
