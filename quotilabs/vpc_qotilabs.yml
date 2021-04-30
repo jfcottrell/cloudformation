@@ -556,7 +556,7 @@ Resources:
 ######### AURORA #########
 
   DatabaseSecurityGroup:
-    Type: "AWS::EC2::SecurityGroup"
+    Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: "security group for instance"
       GroupName: !Sub aurora_${AWS::StackName}
