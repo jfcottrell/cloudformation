@@ -1,0 +1,78 @@
+---
+
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'AWS CloudFormation Elasticache Redis - Cluster'
+Parameters:
+  ClusterName:
+    Description: The name of the cluster
+    Type: String
+  CacheNodeType:
+    Description: The compute and memory capacity of the nodes in the Redis Cluster
+    Type: String
+    Default: cache.t2.small
+    AllowedValues:
+    - cache.m1.small
+    - cache.m1.large
+    - cache.m1.xlarge
+    - cache.m2.xlarge
+    - cache.m2.2xlarge
+    - cache.m2.4xlarge
+    - cache.c1.xlarge
+    - cache.t2.micro
+    - cache.t2.small
+    - cache.t2.medium
+    - cache.m3.medium
+    - cache.m3.large
+    - cache.m3.xlarge
+    - cache.m3.2xlarge
+    - cache.r3.large
+    - cache.r3.xlarge
+    - cache.r3.2xlarge
+    - cache.r3.4xlarge
+    ConstraintDescription: must select a valid Cache Node type.
+  AuthTokenString:
+    Description: The AUTH token (min of 16 chars)
+    Type: String
+  CacheSubnetGroupName:
+    Description: The subnet group name
+    Type: String
+    Default: "sng-tal-private"
+  ReplicationGroupDescription:
+    Description: A user-created description for the replication group.
+    Type: String
+  Environment:
+    Description: The deployment environment
+    Type: String
+    Default: DEV
+    AllowedValues:
+    - DEV
+    - QA
+    - UAT
+    - PROD
+  NumberOfNodes:
+    Description: The number of nodes in the cluster
+    Type: Number
+    Default: 2
+Resources:
+  RedisCluster:
+    Type: AWS::ElastiCache::ReplicationGroup
+    Properties:
+      AuthToken:
+        Ref: AuthTokenString
+      AutomaticFailoverEnabled: true
+      CacheNodeType:
+        Ref: CacheNodeType
+      CacheSubnetGroupName:
+        Ref: CacheSubnetGroupName
+      Engine: redis
+      NumCacheClusters: !Ref NumberOfNodes
+      ReplicationGroupDescription:
+        Ref: ReplicationGroupDescription
+      ReplicationGroupId:
+        Ref: ClusterName
+      TransitEncryptionEnabled: true
+      Tags:
+        - Key: Name
+          Value: !Ref ClusterName
+        - Key: Env
+          Value: !Ref Environment

@@ -1,0 +1,31 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'VPC Security Group'
+Resources:
+  VPCSecGroup1:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Test Security Group   
+      VpcId: vpc-936983fa
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 8080
+        ToPort: 8080
+        CidrIp: 0.0.0.0/0
+        Description: for cometd
+      - IpProtocol: tcp
+        FromPort: 8080
+        ToPort: 8080
+        CidrIpv6: ::/0
+        Description: for cometd
+      - IpProtocol: -1
+        FromPort: -1
+        ToPort: -1
+        CidrIp: 72.5.60.0/24
+      SecurityGroupEgress:
+      - IpProtocol: -1
+        FromPort: -1
+        ToPort: -1
+        CidrIp: 0.0.0.0/0
+Outputs:
+  SecurityGroup:
+    Value: !Ref 'VPCSecGroup1'

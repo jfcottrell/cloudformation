@@ -1,0 +1,126 @@
+---
+
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'AWS CloudFormation RDS - DB Cluster'
+Parameters:
+  AvailabilityZones:
+    Description: A list of Availability Zones (AZs) where instances in the DB cluster can be created. 
+    Type: List<AWS::EC2::AvailabilityZone::Name>
+  ClusterIdentifier:
+    Description: Global Aurora RDS DB identifier
+    Type: String
+  MasterUserName:
+    Description: Master user name (use default)
+    Type: String
+    Default: awsadmin
+  MasterUserPassword:
+    Description: Master user password
+    Type: String
+  Port:
+    Description: Database port (use default)
+    Type: Number
+    Default: 5432
+
+Resources:
+  AuroraCluster:
+    Type: AWS::RDS::DBCluster
+    Properties: 
+      # AssociatedRoles: 
+      #   - DBClusterRole
+      AvailabilityZones: !Ref AvailabilityZones
+      #   - String
+      # BacktrackWindow: Long
+      # BackupRetentionPeriod: Integer
+      # DatabaseName: String
+      DBClusterIdentifier: !Ref ClusterIdentifier
+      # DBClusterParameterGroupName: String
+      # DBSubnetGroupName: String
+      DeletionProtection: true
+      # EnableCloudwatchLogsExports: 
+      #   - String
+      # EnableHttpEndpoint: Boolean
+      # EnableIAMDatabaseAuthentication: Boolean
+      Engine: String
+      EngineMode: provisioned
+      EngineVersion: 11.9
+      # GlobalClusterIdentifier: String
+      # KmsKeyId: String
+      MasterUsername: !Ref MasterUserName
+      MasterUserPassword: !Ref MasterUserPassword
+      Port: !Ref Port
+      # PreferredBackupWindow: String
+      # PreferredMaintenanceWindow: String
+      # ReplicationSourceIdentifier: String
+      # RestoreType: String
+      # ScalingConfiguration: 
+      #   ScalingConfiguration
+      # SnapshotIdentifier: String
+      # SourceDBClusterIdentifier: String
+      # SourceRegion: String
+      # StorageEncrypted: Boolean
+      # Tags: 
+      #   - Tag
+      # UseLatestRestorableTime: Boolean
+      # VpcSecurityGroupIds: 
+      #   - String
+  
+  # Type: AWS::RDS::DBInstance
+  #   Properties: 
+  # AllocatedStorage: String
+  # AllowMajorVersionUpgrade: Boolean
+  # AssociatedRoles: 
+  #   - DBInstanceRole
+  # AutoMinorVersionUpgrade: Boolean
+  # AvailabilityZone: String
+  # BackupRetentionPeriod: Integer
+  # CACertificateIdentifier: String
+  # CharacterSetName: String
+  # CopyTagsToSnapshot: Boolean
+  # DBClusterIdentifier: String
+  # DBInstanceClass: String
+  # DBInstanceIdentifier: String
+  # DBName: String
+  # DBParameterGroupName: String
+  # DBSecurityGroups: 
+  #   - String
+  # DBSnapshotIdentifier: String
+  # DBSubnetGroupName: String
+  # DeleteAutomatedBackups: Boolean
+  # DeletionProtection: Boolean
+  # Domain: String
+  # DomainIAMRoleName: String
+  # EnableCloudwatchLogsExports: 
+  #   - String
+  # EnableIAMDatabaseAuthentication: Boolean
+  # EnablePerformanceInsights: Boolean
+  # Engine: String
+  # EngineVersion: String
+  # Iops: Integer
+  # KmsKeyId: String
+  # LicenseModel: String
+  # MasterUsername: String
+  # MasterUserPassword: String
+  # MaxAllocatedStorage: Integer
+  # MonitoringInterval: Integer
+  # MonitoringRoleArn: String
+  # MultiAZ: Boolean
+  # OptionGroupName: String
+  # PerformanceInsightsKMSKeyId: String
+  # PerformanceInsightsRetentionPeriod: Integer
+  # Port: String
+  # PreferredBackupWindow: String
+  # PreferredMaintenanceWindow: String
+  # ProcessorFeatures: 
+  #   - ProcessorFeature
+  # PromotionTier: Integer
+  # PubliclyAccessible: Boolean
+  # SourceDBInstanceIdentifier: String
+  # SourceRegion: String
+  # StorageEncrypted: Boolean
+  # StorageType: String
+  # Tags: 
+  #   - Tag
+  # Timezone: String
+  # UseDefaultProcessorFeatures: Boolean
+  # VPCSecurityGroups: 
+  #   - String

@@ -1,0 +1,106 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Networking VPC template 
+
+Parameters:
+
+  VPCName:
+    Description: The name of the VPC
+    Type: String
+    Default: vpc-networking
+
+  EnvironmentName:
+    Description: The base name for the created resources
+    Type: String
+    Default: qotilabs
+
+  VPCCIDR:
+    Description: The CIDR block of the VPC
+    Type: String
+    Default: 172.16.0.0/24
+  
+  PublicSubnet1aCIDR:
+    Description: The CIDR block of the public subnet
+    Type: String
+    Default: 172.16.0.0/28
+
+Resources:
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VPCCIDR
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Ref VPCName
+  
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub igw-${EnvironmentName}
+
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VPC
+
+  PublicSubnet1a:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      CidrBlock: !Ref PublicSubnet1aCIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub subnet-${EnvironmentName}-public_e1a_1
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName} Public Routes
+
+  DefaultPublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnet1aRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet1a
+
+######### OUTPUTS #########
+
+Outputs:
+  NetworkingCIDR:
+    Description: CIDR of Networking VPC
+    Value: !Ref VPCCIDR
+    Export:
+      Name: NetworkingCIDR
+  NetworkingVPC:
+    Description: VPC Networking
+    Value: !Ref VPC
+    Export:
+      Name: NetworkingVPC
+  NetworkingPublicRouteTable:
+    Description: Public route table for Networking VPC
+    Value: !Ref PublicRouteTable
+    Export:
+      Name: NetworkingPublicRouteTable
+  NetworkingDefaultPublicRoute:
+    Description: Default public route
+    Value: !Ref DefaultPublicRoute
+    Export:
+      Name: DefaultPublicRoute
+  

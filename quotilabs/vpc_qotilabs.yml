@@ -1,0 +1,724 @@
+# 
+
+AWSTemplateFormatVersion: "2010-09-09"
+Description: VPC template for qotilabs
+
+Metadata: 
+  AWS::CloudFormation::Interface: 
+    ParameterGroups: 
+      - Label: 
+          default: "Configuration"
+        Parameters: 
+          - VPCCIDRBase
+          - KeyPair
+          - DNSSubdomain
+          - HostedZoneID
+          - EC2AMI
+      - Label: 
+          default: "Database"
+        Parameters: 
+          - DBCreate
+          - DBClusterIdentifier
+          - DBInstanceClass
+          - DBUsername
+          - DBPassword
+
+Parameters:
+
+  KeyPair:
+    Description: The keypair to use to EC2 instances
+    Type: AWS::EC2::KeyPair::KeyName
+
+  VPCCIDRBase:
+    Description: The CIDR base (left two octets) of the VPC
+    Type: String
+    Default: 172.16
+
+  DNSSubdomain:
+    Description: The DNS subdomain
+    Type: String
+    Default: test
+
+  HostedZoneID:
+    Description: The hosted zone ID from Route 53
+    Type: AWS::Route53::HostedZone::Id
+
+  EC2AMI:
+    Description: The AMI id for the EC2 instance to deploy
+    Type: AWS::EC2::Image::Id
+    #Default: ami-0fdeb7d01088c9dbf   # Ubuntu 20.10 amd64
+    Default: ami-0baa47a7ce0d6f785   # John's Tester  TODO: REMOVE
+
+  DBCreate:
+    Type: String
+    Default: 'Do NOT Create'
+    AllowedValues:
+      - 'Create'
+      - 'Do NOT Create'
+
+  DBClusterIdentifier:
+    AllowedPattern: "[a-zA-Z0-9]+"
+    Description: Cluster Identifier
+    Type: String
+    Default: AuroraCluster
+
+  DBInstanceClass:
+    Description: The class of the DB instance
+    Type: String
+    Default: db.t3.small
+    AllowedValues:
+      - db.t3.small
+      - db.t3.medium
+      - db.r5.large
+      - db.r5.xlarge
+      - db.r5.2xlarge
+      - db.r5.4xlarge
+      - db.r5.4xlarge
+      - db.r5.8xlarge
+      - db.r5.12xlarge
+      - db.r5.16.xlarge
+
+  DBUsername:
+    AllowedPattern: "[a-zA-Z0-9]+"
+    ConstraintDescription: must be between 1 to 16 alphanumeric characters.
+    Description: The database admin account user name, between 1 to 16 alphanumeric characters.
+    MaxLength: '16'
+    MinLength: '1'
+    Type: String
+
+  DBPassword:
+    AllowedPattern: "[a-zA-Z0-9]+"
+    ConstraintDescription: must be between 8 to 41 alphanumeric characters.
+    Description: The database admin account password, between 8 to 41 alphanumeric characters.
+    MaxLength: '41'
+    MinLength: '8'
+    NoEcho: 'true'
+    Type: String
+
+  # CFPriceClass:
+  #   Description:    The price class that corresponds with the maximum price that you want to pay for CloudFront service. If you specify PriceClass_All, CloudFront responds to requests for your objects from all CloudFront edge locations.
+  #   Type:           String
+  #   Default:        "PriceClass_All"
+  #   AllowedValues:
+  #     - PriceClass_All
+  #     - PriceClass_100
+  #     - PriceClass_200
+
+  # CFViewerProtocolPolicy:
+  #   Description:    The protocol that users can use to access the files in the origin that you specified in the TargetOriginId property when the default cache behavior is applied to a request.
+  #   Type:           String
+  #   Default:        "redirect-to-https"
+  #   AllowedValues:
+  #     - redirect-to-https
+  #     - allow-all
+  #     - https-only
+
+  # CFMinimumProtocolVersion:
+  #   Description:    The minimum version of the SSL protocol that you want CloudFront to use for HTTPS connections.
+  #   Type:           String
+  #   Default:        "TLSv1"
+  #   AllowedValues:
+  #     - TLSv1
+  #     - TLSv1.2_2018
+  #     - TLSv1.1_2016
+  #     - TLSv1_2016
+  #     - SSLv3
+
+  # CFOriginProtocolPolicy:
+  #   Description:    CloudFront Origin Protocol Policy to apply to your origin.
+  #   Type:           String
+  #   Default:        "http-only"
+  #   AllowedValues:
+  #     - http-only
+  #     - match-viewer
+  #     - https-only
+
+Conditions:
+  CreateDB: !Equals
+    - !Ref DBCreate
+    - Create
+
+Resources:
+
+########### VPC ###########
+
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Sub ${VPCCIDRBase}.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Sub vpc_${AWS::StackName}
+
+  VPCPeeringConnection:
+    DependsOn: VPC
+    Type: 'AWS::EC2::VPCPeeringConnection'
+    Properties:
+      VpcId: !Ref VPC
+      PeerVpcId: !ImportValue NetworkingVPC
+
+########### IGW ###########
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub igw_${AWS::StackName}
+
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VPC
+
+########### SUBNETS ###########
+
+  # Subnets in Availability Zone "A"
+  PublicSubnet1a:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      CidrBlock: !Sub ${VPCCIDRBase}.1.0/24
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub subnet_${AWS::StackName}_public1a
+
+  PublicSubnet2a:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      CidrBlock: !Sub ${VPCCIDRBase}.2.0/24
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub subnet_${AWS::StackName}_public2a
+
+  PrivateSubnet1a:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      CidrBlock: !Sub ${VPCCIDRBase}.3.0/24
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub subnet_${AWS::StackName}_private1a
+
+  PrivateSubnet2a:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      CidrBlock: !Sub ${VPCCIDRBase}.4.0/24
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub subnet_${AWS::StackName}_private2a
+
+  # Subnets in Availability Zone "B"
+  PublicSubnet1b:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 1, !GetAZs '' ]
+      CidrBlock: !Sub ${VPCCIDRBase}.32.0/24
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub subnet_${AWS::StackName}_public1b
+
+  PublicSubnet2b:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 1, !GetAZs '' ]
+      CidrBlock: !Sub ${VPCCIDRBase}.33.0/24
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub subnet_${AWS::StackName}_public2b
+
+  PrivateSubnet1b:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 1, !GetAZs '' ]
+      CidrBlock: !Sub ${VPCCIDRBase}.34.0/24
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub subnet_${AWS::StackName}_private1b
+
+  PrivateSubnet2b:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 1, !GetAZs '' ]
+      CidrBlock: !Sub ${VPCCIDRBase}.35.0/24
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub subnet_${AWS::StackName}_private2b
+
+########### NAT ###########
+
+  NatGatewayEIP:
+    Type: AWS::EC2::EIP
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      Domain: vpc
+
+  NatGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatGatewayEIP.AllocationId
+      SubnetId: !Ref PublicSubnet1a
+
+########### ROUTE TABLES ###########
+  
+  # Update Networking route table
+  NetworkingRoute:
+    Type: AWS::EC2::Route
+    DependsOn: VPCPeeringConnection
+    Properties:
+      DestinationCidrBlock: !Sub ${VPCCIDRBase}.0.0/16
+      VpcPeeringConnectionId: !Ref VPCPeeringConnection          # Peer
+      RouteTableId: !ImportValue NetworkingPublicRouteTable # rtb-0c6c519d2665486db         # Default public
+
+  # Public routes
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub route_${AWS::StackName}_public
+
+  DefaultPublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnet1aRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet1a
+
+  PublicSubnet1bRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet1b
+
+  PublicSubnet2aRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet2a
+
+  PublicSubnet2bRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet2b
+
+  # Private routes
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub route_${AWS::StackName}_private
+
+  DefaultPrivateRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway
+
+  NetworkingPrivateRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: !ImportValue NetworkingCIDR
+      VpcPeeringConnectionId: !Ref VPCPeeringConnection
+
+  PrivateSubnet1aRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref PrivateSubnet1a
+
+  PrivateSubnet1bRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref PrivateSubnet1b
+
+  PrivateSubnet2aRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref PrivateSubnet2a
+
+  PrivateSubnet2bRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref PrivateSubnet2b
+
+########### EC2 ###########
+
+  # EC2 Security Group
+  EC2SecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupDescription: "security group for instance"
+      GroupName: !Sub sg_${AWS::StackName}
+      Tags:
+        - Key: "Name"
+          Value: !Sub sg_${AWS::StackName}
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - CidrIp: "0.0.0.0/0"
+          FromPort: 8080
+          IpProtocol: "tcp"
+          ToPort: 8080
+        - CidrIp: "0.0.0.0/0"
+          FromPort: 80
+          IpProtocol: "tcp"
+          ToPort: 80
+        - CidrIp: "0.0.0.0/0"
+          FromPort: 22
+          IpProtocol: "tcp"
+          ToPort: 22
+
+  # EC2 Instance
+  EC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t2.nano
+      KeyName: !Ref KeyPair
+      Tags:
+      - Key: Name
+        Value: !Sub "${AWS::StackName} Test App"
+      ImageId: !Ref EC2AMI
+      NetworkInterfaces:
+      - GroupSet:
+        - Ref: EC2SecurityGroup
+        AssociatePublicIpAddress: false
+        DeviceIndex: '0'
+        DeleteOnTermination: 'true'
+        SubnetId:
+          Ref: PrivateSubnet1a          # change to launch this in a different subnet
+
+########### LOAD BALANCER ###########
+
+  # Security Group
+  ALBSecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupDescription: "security group for ALB"
+      GroupName: !Sub sg_alb_${AWS::StackName}
+      Tags:
+        - Key: "Name"
+          Value: !Sub sg_alb_${AWS::StackName}
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - CidrIp: "0.0.0.0/0"
+          FromPort: 80
+          IpProtocol: "tcp"
+          ToPort: 80
+        - CidrIp: "0.0.0.0/0"
+          FromPort: 443
+          IpProtocol: "tcp"
+          ToPort: 443
+
+  # Application Load Balancer
+  ApplicationLoadBalancer:
+    Type: "AWS::ElasticLoadBalancingV2::LoadBalancer"
+    Properties:
+        Name: !Sub alb-${AWS::StackName}
+        Scheme: "internet-facing"
+        Type: "application"
+        Subnets:                    # public (Internet) facing across both AZ "A" and AZ "B" (NB: ALB requires two AZs)
+          - !Ref PublicSubnet1a
+          - !Ref PublicSubnet1b
+        SecurityGroups:
+          - !Ref ALBSecurityGroup
+        IpAddressType: "ipv4"
+        LoadBalancerAttributes:
+          - Key: "access_logs.s3.enabled"
+            Value: "false"
+          - Key: "idle_timeout.timeout_seconds"
+            Value: "60"
+          - Key: "deletion_protection.enabled"
+            Value: "false"
+          - Key: "routing.http2.enabled"
+            Value: "true"
+          - Key: "routing.http.drop_invalid_header_fields.enabled"
+            Value: "false"
+
+  # Listeners
+  HTTPSListener:
+      Type: "AWS::ElasticLoadBalancingV2::Listener"
+      Properties:
+          LoadBalancerArn: !Ref ApplicationLoadBalancer
+          Port: 443
+          Protocol: "HTTPS"
+          SslPolicy: "ELBSecurityPolicy-2016-08"
+          Certificates:
+            #- CertificateArn: arn:aws:acm:eu-west-1:316552632813:certificate/945b30fa-0e14-43d8-8b7e-c56651277246
+            - CertificateArn: arn:aws:acm:eu-west-1:504102639853:certificate/209ae913-2c43-41c5-b6e5-dbfeff804568  # TODO: REMOVE
+         
+          DefaultActions:
+            - Order: 1
+              TargetGroupArn: !Ref TargetGroup
+              Type: "forward"
+
+  HTTPListener:
+      Type: "AWS::ElasticLoadBalancingV2::Listener"
+      Properties:
+          LoadBalancerArn: !Ref ApplicationLoadBalancer
+          Port: 80
+          Protocol: "HTTP"
+          DefaultActions:
+            - Order: 1
+              RedirectConfig:
+                  Protocol: "HTTPS"
+                  Port: "443"
+                  Host: "#{host}"
+                  Path: "/#{path}"
+                  Query: "#{query}"
+                  StatusCode: "HTTP_301"
+              Type: "redirect"
+
+  TargetGroup:
+    Type: "AWS::ElasticLoadBalancingV2::TargetGroup"
+    Properties:
+        HealthCheckIntervalSeconds: 30
+        HealthCheckPath: "/"                # modify health check path to match your application (e.g. "/index.html")
+        Port: 80                            # change if your instance communicates on a different port
+        Protocol: "HTTP"
+        HealthCheckPort: "traffic-port"
+        HealthCheckProtocol: "HTTP"
+        HealthCheckTimeoutSeconds: 5
+        UnhealthyThresholdCount: 2
+        TargetType: "instance"
+        Targets:
+          - Id: !Ref EC2Instance
+            Port: 80                          # change if your instance communicates on a different port           
+        Matcher:
+            HttpCode: "200"
+        HealthyThresholdCount: 5
+        VpcId: !Ref VPC
+        Name: !Sub tg-${AWS::StackName}
+        HealthCheckEnabled: true
+        TargetGroupAttributes:
+          - Key: "stickiness.enabled"
+            Value: "false"
+          - Key: "deregistration_delay.timeout_seconds"
+            Value: "300"
+          - Key: "stickiness.type"
+            Value: "lb_cookie"
+          - Key: "stickiness.lb_cookie.duration_seconds"
+            Value: "86400"
+          - Key: "slow_start.duration_seconds"
+            Value: "0"
+          - Key: "load_balancing.algorithm.type"
+            Value: "round_robin"
+
+######### ROUTE 53 #########
+
+  LoadBalancerAlias:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      AliasTarget:
+        DNSName: !GetAtt ApplicationLoadBalancer.DNSName
+        HostedZoneId: !GetAtt ApplicationLoadBalancer.CanonicalHostedZoneID
+      HostedZoneId: !Ref HostedZoneID
+      #Name: !Sub ${DNSSubdomain}.qoticloud.com
+      Name: !Sub ${DNSSubdomain}.johnsawsdomain.com  # TODO: REMOVE
+      Type: A
+
+######### AURORA #########
+
+  DatabaseSecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupDescription: "security group for instance"
+      GroupName: !Sub aurora_${AWS::StackName}
+      Tags:
+        - Key: "Name"
+          Value: !Sub sg_aurora_${AWS::StackName}
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - SourceSecurityGroupId: !Ref EC2SecurityGroup
+          FromPort: 3306
+          IpProtocol: "tcp"
+          ToPort: 3306
+        - CidrIp: !ImportValue NetworkingCIDR
+          FromPort: 3306
+          IpProtocol: "tcp"
+          ToPort: 3306
+
+  DatabaseSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: CloudFormation managed DB subnet group.
+      DBSubnetGroupName: !Sub sngrp_${AWS::StackName}
+      SubnetIds:
+        - !Ref PrivateSubnet1a
+        - !Ref PrivateSubnet1b
+
+  DatabaseCluster:
+    Type: AWS::RDS::DBCluster
+    Condition: CreateDB
+    DependsOn: DatabaseSubnetGroup
+    Properties:
+      Engine: aurora-mysql
+      EngineMode: provisioned
+      MasterUsername: !Ref DBUsername
+      MasterUserPassword: !Ref DBPassword
+      BackupRetentionPeriod: 7
+      PreferredBackupWindow: 01:00-02:00
+      PreferredMaintenanceWindow: mon:03:00-mon:04:00
+      DBSubnetGroupName: !Sub sngrp_${AWS::StackName}
+      VpcSecurityGroupIds:
+        - !Ref DatabaseSecurityGroup
+
+  DatabasePrimaryInstance:
+    Type: AWS::RDS::DBInstance
+    Condition: CreateDB
+    DependsOn: DatabaseCluster
+    Properties:
+      Engine: aurora-mysql
+      DBClusterIdentifier: !Ref DatabaseCluster
+      DBInstanceClass: !Ref DBInstanceClass
+      DBSubnetGroupName: !Sub sngrp_${AWS::StackName}
+      PubliclyAccessible: false
+
+  DatabaseReplicaInstance:
+    Type: AWS::RDS::DBInstance
+    Condition: CreateDB
+    DependsOn: DatabaseCluster
+    Properties:
+      Engine: aurora-mysql
+      DBClusterIdentifier: !Ref DatabaseCluster
+      DBInstanceClass: !Ref DBInstanceClass
+      DBSubnetGroupName: !Sub sngrp_${AWS::StackName}
+      PubliclyAccessible: false
+
+  DatabaseParameterGroup:
+    Type: AWS::RDS::DBParameterGroup
+    Condition: CreateDB
+    DependsOn: DatabaseCluster
+    Properties: 
+      Description: !Sub Parameter group for ${AWS::StackName}
+      Family: aurora-mysql5.7
+      Parameters: 
+        slow_query_log: 1
+        long_query_time: 1 
+        log_output: FILE
+
+  # CLOUDFRONT DISTRIBUTION
+  # CloudFrontDistribution:
+  #   Type: 'AWS::CloudFront::Distribution'
+  #   Properties:
+  #     DistributionConfig:
+  #       Comment: 'Cloudfront Distribution pointing ALB Origin'
+  #       Origins:
+  #         - DomainName: !GetAtt 'ApplicationLoadBalancer.DNSName'
+  #           Id: !Ref 'ApplicationLoadBalancer'
+  #           CustomOriginConfig:
+  #             HTTPPort: '80'
+  #             HTTPSPort: '443'
+  #             OriginProtocolPolicy: !Ref 'CFOriginProtocolPolicy'
+  #             OriginKeepaliveTimeout: 60
+  #             OriginReadTimeout: 30
+  #             OriginSSLProtocols:
+  #               - TLSv1
+  #               - TLSv1.1
+  #               - TLSv1.2
+  #               - SSLv3
+  #       Enabled: true
+  #       HttpVersion: 'http2'
+  #       # Aliases:
+  #       #   - !Ref 'AlternateDomainNames'
+  #       DefaultCacheBehavior:
+  #         AllowedMethods:
+  #           - GET
+  #           - HEAD
+  #           - DELETE
+  #           - OPTIONS
+  #           - PATCH
+  #           - POST
+  #           - PUT
+  #         Compress: false
+  #         DefaultTTL: 0
+  #         MaxTTL: 0
+  #         MinTTL: 0
+  #         SmoothStreaming: 'false'
+  #         TargetOriginId: !Ref 'ApplicationLoadBalancer'
+  #         # ForwardedValues:
+  #         #   QueryString: !Ref 'QueryString'
+  #         #   Cookies:
+  #         #     Forward: !Ref 'ForwardCookies'
+  #         ViewerProtocolPolicy: !Ref 'CFViewerProtocolPolicy'
+  #       PriceClass: !Ref 'CFPriceClass'
+  #       ViewerCertificate:
+  #         AcmCertificateArn: arn:aws:acm:eu-west-1:504102639853:certificate/209ae913-2c43-41c5-b6e5-dbfeff804568
+  #       #  SslSupportMethod:  !Ref 'SslSupportMethod'
+  #         MinimumProtocolVersion: !Ref 'CFMinimumProtocolVersion'
+  #       IPV6Enabled: false
+
+######### SSM (Parameter Store) #########
+
+  # AuroraEndpointSSMValue:
+  #   Type: AWS::SSM::Parameter
+  #   Properties:
+  #     Description: Aurora endpoint SSM parameter store value
+  #     Name: !Sub aurora_endpoint_${AWS::StackName}
+  #     Type: String
+  #     Value: !GetAtt 'DatabaseCluster.Endpoint.Address'
+
+# ######### OUTPUTS #########
+
+Outputs:
+  ALBEndpoint:
+    Description: ALB endpoint
+    Value: !GetAtt ApplicationLoadBalancer.DNSName
+  ClusterEndpoint:
+    Condition: CreateDB
+    Description: 'Aurora Cluster/Writer Endpoint'
+    Value: !GetAtt 'DatabaseCluster.Endpoint.Address'
+  Port:
+    Condition: CreateDB
+    Description: 'Aurora Endpoint Port'
+    Value: !GetAtt 'DatabaseCluster.Endpoint.Port'
+  DBUsername:
+    Condition: CreateDB
+    Description: 'Database master username'
+    Value: !Ref DBUsername
+  MySQLCommandLine: 
+    Condition: CreateDB   
+    Description: MySQL Command Line
+    Value: !Join
+      - ''
+      - - 'mysql -h '
+        - !GetAtt 'DatabaseCluster.Endpoint.Address' 
+        - ' -u '
+        - !Ref DBUsername
+        - ' -p'
